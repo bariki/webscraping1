@@ -16,7 +16,7 @@ class GsmarenaSpider(Spider) :
             host="localhost",
             user="root",
             passwd="",
-            database="python1"
+            database="python2"
         )
         cursor = dbCon.cursor()    
         return dbCon, cursor
@@ -40,10 +40,10 @@ class GsmarenaSpider(Spider) :
         
         phone_name = response.xpath('*//h1/text()').extract_first()
 
-        print(phone_name)
-        print("#"*100)
-        print(response.url)
-        print("#"*100)
+        # print(phone_name)
+        # print("#"*100)
+        # print(response.url)
+        # print("#"*100)
 
         display_size = response.xpath('*//li[@class="help accented help-display"]/strong/span/text()').extract_first()
         display_size = float( re.findall('[0-9.]+', display_size)[0] )
@@ -71,12 +71,16 @@ class GsmarenaSpider(Spider) :
 
         gsmarena_likes = int(response.xpath('*//li[@class="light pattern help help-fans"]/a/strong/text()').extract_first())
 
+        price_string = response.xpath('*//td[@data-spec="price"]/text()').extract_first()
+        if( len( response.xpath('*//td[@data-spec="price"]/a/text()') ) > 0 ) :
+            price_string = response.xpath('*//td[@data-spec="price"]/a/text()').extract_first()
+
         front_camera_px = response.xpath('*//td[@data-spec="cam2modules"]/text()').extract_first()
         front_camera_px = int(re.findall('\d+',front_camera_px)[0])
 
-        sql = "INSERT INTO phones (company, phone_name, display_size, display_pixel_width, display_pixel_height, video_pixel, back_camera_px, battery_mah, processor, ram1, ram2, gsmarena_views, gsmarena_likes, front_camera_px)"
-        sql += "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-        val = (phone_name.split()[0], phone_name, display_size, display_pixel_width, display_pixel_height, video_pixel, back_camera_px, battery_mah, processor, ram1, ram2, gsmarena_views, gsmarena_likes, front_camera_px,)
+        sql = "INSERT INTO phones (company, phone_name, display_size, display_pixel_width, display_pixel_height, video_pixel, back_camera_px, battery_mah, processor, ram1, ram2, gsmarena_views, gsmarena_likes, front_camera_px, price_string)"
+        sql += "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        val = (phone_name.split()[0], phone_name, display_size, display_pixel_width, display_pixel_height, video_pixel, back_camera_px, battery_mah, processor, ram1, ram2, gsmarena_views, gsmarena_likes, front_camera_px,price_string,)
         
         dbCon, cursor = self.getCursor()
         cursor.execute(sql, val)
@@ -95,7 +99,7 @@ class GsmarenaSpider(Spider) :
     def parse_review_page(self, response):
 
         dbCon, cursor = self.getCursor()
-
+        
         coms = response.xpath('*//div[@class="user-thread"]')
         coms_count = len(coms)
         phone_id = response.meta['phone_id']
