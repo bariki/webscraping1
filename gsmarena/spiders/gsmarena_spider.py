@@ -11,12 +11,36 @@ class GsmarenaSpider(Spider) :
     allowed_domains = ['www.gsmarena.com']
     start_urls = ['https://www.gsmarena.com/']
 
+
+    def convertPrice(self, price_str):
+        temp1 = price_str.lower().split('/')
+
+        temp_usd = list (filter(lambda x: ('$' in x or 'usd' in x ) , temp1 ))
+        temp_eur = list (filter(lambda x: ('£' in x or 'eur' in x ) , temp1 ))
+        temp_inr = list (filter(lambda x: ('₹' in x or 'inr' in x or 'indian' in x  ) , temp1 ))
+
+        if( len(temp_usd) > 0 ):
+            price_usd =  float( ''.join(map(str, re.findall('[0-9.]+',temp_usd[0] ) )) )
+        elif( len(temp_eur) > 0 ):
+            price_usd =  float( ''.join(map(str, re.findall('[0-9.]+',temp_eur[0] ) )) ) * 1.103
+        elif( len(temp_inr) > 0 ):
+            price_usd =  float( ''.join(map(str, re.findall('[0-9.]+',temp_inr[0] ) )) ) * 0.014
+        else:
+            print("#"*200)
+            print("Failed to catch USD")
+            print(price_str)
+            print(type(price_str))
+            print("#"*200)
+
+        return price_usd
+        
+
     def getCursor(self):
         dbCon = mysql.connector.connect(
             host="localhost",
             user="root",
             passwd="",
-            database="python2"
+            database="python3"
         )
         cursor = dbCon.cursor()    
         return dbCon, cursor
@@ -28,22 +52,32 @@ class GsmarenaSpider(Spider) :
         links = phone_divs[0].xpath('./table/tbody//a/@href').extract()
         links += phone_divs[1].xpath('./table/tbody//a/@href').extract()
 
+        for link in links:
+            temp1 = link.split('-')
+            temp2 = re.findall('\d+', temp1[len(temp1)-1])[0]
+            yield Request('https://www.gsmarena.com/related.php3?idPhone='+str(temp2), meta={"links": links}, callback=self.parse_related_phones)
+
         for i,link in enumerate(links):
-            print("Before Yield" + str(i+1))
-            print('https://www.gsmarena.com/'+link)
-            print("*"*100)
             yield Request('https://www.gsmarena.com/'+link, callback=self.parse_phone_detail_page)
         
         return super().parse(response)
+
+    def parse_related_phones(self, response):
+        links = response.meta['links']
+        temp2 = response.xpath('*//div[@class="makers related"]/ul/li/a/@href').extract();
+        for temp1 in temp2:
+            if(temp1 not in links):
+                yield Request('https://www.gsmarena.com/'+temp1, callback=self.parse_phone_detail_page)
+    
 
     def parse_phone_detail_page(self, response):
         
         phone_name = response.xpath('*//h1/text()').extract_first()
 
-        # print(phone_name)
-        # print("#"*100)
-        # print(response.url)
-        # print("#"*100)
+        print("-"*70)
+        print(phone_name)
+        print(response.url)
+        print("")
 
         display_size = response.xpath('*//li[@class="help accented help-display"]/strong/span/text()').extract_first()
         display_size = float( re.findall('[0-9.]+', display_size)[0] )
@@ -75,12 +109,14 @@ class GsmarenaSpider(Spider) :
         if( len( response.xpath('*//td[@data-spec="price"]/a/text()') ) > 0 ) :
             price_string = response.xpath('*//td[@data-spec="price"]/a/text()').extract_first()
 
+        price_usd = self.convertPrice(price_string)
+
         front_camera_px = response.xpath('*//td[@data-spec="cam2modules"]/text()').extract_first()
         front_camera_px = int(re.findall('\d+',front_camera_px)[0])
 
-        sql = "INSERT INTO phones (company, phone_name, display_size, display_pixel_width, display_pixel_height, video_pixel, back_camera_px, battery_mah, processor, ram1, ram2, gsmarena_views, gsmarena_likes, front_camera_px, price_string)"
-        sql += "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-        val = (phone_name.split()[0], phone_name, display_size, display_pixel_width, display_pixel_height, video_pixel, back_camera_px, battery_mah, processor, ram1, ram2, gsmarena_views, gsmarena_likes, front_camera_px,price_string,)
+        sql = "INSERT INTO phones (company, phone_name, display_size, display_pixel_width, display_pixel_height, video_pixel, back_camera_px, battery_mah, processor, ram1, ram2, gsmarena_views, gsmarena_likes, front_camera_px, price_string, price_usd)"
+        sql += "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        val = (phone_name.split()[0], phone_name, display_size, display_pixel_width, display_pixel_height, video_pixel, back_camera_px, battery_mah, processor, ram1, ram2, gsmarena_views, gsmarena_likes, front_camera_px,price_string, price_usd,)
         
         dbCon, cursor = self.getCursor()
         cursor.execute(sql, val)
@@ -119,7 +155,7 @@ class GsmarenaSpider(Spider) :
 
         next_url = response.xpath('*//div[@class="nav-pages"]/a[@title="Next page"]/@href').extract_first()
 
-        if( next_url != '' ):
+        if( next_url is not None ):
                yield Request('https://www.gsmarena.com/'+next_url, meta={"phone_id": phone_id}, callback=self.parse_review_page)
 
         
